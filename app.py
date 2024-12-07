@@ -519,24 +519,46 @@ if 'optimization_results' in st.session_state:
         
         # Ask user if they want to apply the optimized parameters
         if st.button("Apply Optimized Parameters"):
+            # Store the optimized parameters in session state
             if st.session_state.current_strategy == "Moving Average Crossover":
-                st.session_state.ma_params = st.session_state.optimization_results['parameters']
+                st.session_state.ma_params = {
+                    'short_window': st.session_state.optimization_results['parameters']['short_window'],
+                    'long_window': st.session_state.optimization_results['parameters']['long_window']
+                }
             elif st.session_state.current_strategy == "RSI":
-                st.session_state.rsi_params = st.session_state.optimization_results['parameters']
+                st.session_state.rsi_params = {
+                    'window': st.session_state.optimization_results['parameters']['window'],
+                    'oversold': st.session_state.optimization_results['parameters']['oversold'],
+                    'overbought': st.session_state.optimization_results['parameters']['overbought']
+                }
             elif st.session_state.current_strategy == "Bollinger Bands":
-                st.session_state.bb_params = st.session_state.optimization_results['parameters']
+                st.session_state.bb_params = {
+                    'bb_window': st.session_state.optimization_results['parameters']['bb_window'],
+                    'num_std': st.session_state.optimization_results['parameters']['num_std']
+                }
             elif st.session_state.current_strategy == "Trend Following":
-                if 'trend_following_params' not in st.session_state:
-                    st.session_state.trend_following_params = {}
-                st.session_state.trend_following_params = st.session_state.optimization_results['parameters']
+                st.session_state.trend_following_params = {
+                    'ema_short': st.session_state.optimization_results['parameters']['ema_short'],
+                    'ema_long': st.session_state.optimization_results['parameters']['ema_long'],
+                    'atr_period': st.session_state.optimization_results['parameters']['atr_period'],
+                    'rsi_period': st.session_state.optimization_results['parameters']['rsi_period']
+                }
             elif st.session_state.current_strategy == "Mean Reversion":
-                if 'mean_reversion_params' not in st.session_state:
-                    st.session_state.mean_reversion_params = {}
-                st.session_state.mean_reversion_params = st.session_state.optimization_results['parameters']
+                st.session_state.mean_reversion_params = {
+                    'bb_window': st.session_state.optimization_results['parameters']['bb_window'],
+                    'bb_std': st.session_state.optimization_results['parameters']['bb_std'],
+                    'rsi_window': st.session_state.optimization_results['parameters']['rsi_window'],
+                    'zscore_window': st.session_state.optimization_results['parameters']['zscore_window']
+                }
             else:  # Statistical Arbitrage
-                if 'stat_arb_params' not in st.session_state:
-                    st.session_state.stat_arb_params = {}
-                st.session_state.stat_arb_params = st.session_state.optimization_results['parameters']
+                st.session_state.stat_arb_params = {
+                    'window': st.session_state.optimization_results['parameters']['window'],
+                    'entry_zscore': st.session_state.optimization_results['parameters']['entry_zscore'],
+                    'exit_zscore': st.session_state.optimization_results['parameters']['exit_zscore']
+                }
+            
+            # Add success message
+            st.success(f"Successfully applied optimized parameters for {st.session_state.current_strategy} strategy!")
             
             # Clear optimization results after applying
             del st.session_state.optimization_results

@@ -21,41 +21,80 @@ class Backtester:
         # Generate signals - ensure we get a Series
         signals = self.strategy.generate_signals(data)
         if isinstance(signals, pd.DataFrame):
-            # If signals is a DataFrame, extract the signal column
             results['Signal'] = signals['Signal']
         else:
-            # If signals is already a Series
             results['Signal'] = signals
         
-        # Calculate position changes
-        position_changes = results['Signal'].diff()
+        # Initialize columns
+        results['Position'] = 0  # Current position
+        results['Shares'] = 0    # Number of shares held
+        results['Cash'] = self.initial_capital  # Available cash
+        results['Holdings'] = 0   # Value of holdings
+        results['Total Value'] = self.initial_capital  # Total portfolio value
+        results['Returns'] = 0.0  # Period returns
         
-        # Calculate transaction costs
-        transaction_costs = abs(position_changes) * (self.commission + self.slippage)
+        for i in range(1, len(results)):
+            current_price = data['Close'].iloc[i]
+            prev_price = data['Close'].iloc[i-1]
+            current_signal = results['Signal'].iloc[i]
+            prev_signal = results['Signal'].iloc[i-1]
+            
+            # Copy previous values
+            results.loc[results.index[i], 'Cash'] = results['Cash'].iloc[i-1]
+            results.loc[results.index[i], 'Shares'] = results['Shares'].iloc[i-1]
+            results.loc[results.index[i], 'Position'] = results['Position'].iloc[i-1]
+            
+            # Check for position changes
+            if current_signal != prev_signal:
+                # Close existing position if any
+                if results['Shares'].iloc[i-1] != 0:
+                    # Calculate transaction costs for closing
+                    close_value = abs(results['Shares'].iloc[i-1] * current_price)
+                    transaction_cost = close_value * (self.commission + self.slippage)
+                    
+                    # Update cash
+                    if results['Position'].iloc[i-1] > 0:  # Long position
+                        results.loc[results.index[i], 'Cash'] += close_value - transaction_cost
+                    else:  # Short position
+                        results.loc[results.index[i], 'Cash'] -= close_value + transaction_cost
+                    
+                    # Reset shares
+                    results.loc[results.index[i], 'Shares'] = 0
+                    results.loc[results.index[i], 'Position'] = 0
+                
+                # Open new position if signal is not zero
+                if current_signal != 0:
+                    # Calculate position size
+                    available_capital = results['Cash'].iloc[i]
+                    shares = self.calculate_position_size(available_capital, current_price)
+                    
+                    # Calculate transaction costs for opening
+                    open_value = abs(shares * current_price)
+                    transaction_cost = open_value * (self.commission + self.slippage)
+                    
+                    if current_signal > 0:  # Long position
+                        if open_value + transaction_cost <= available_capital:
+                            results.loc[results.index[i], 'Cash'] -= (open_value + transaction_cost)
+                            results.loc[results.index[i], 'Shares'] = shares
+                            results.loc[results.index[i], 'Position'] = 1
+                    else:  # Short position
+                        results.loc[results.index[i], 'Cash'] += (open_value - transaction_cost)
+                        results.loc[results.index[i], 'Shares'] = -shares
+                        results.loc[results.index[i], 'Position'] = -1
+            
+            # Calculate holdings value
+            results.loc[results.index[i], 'Holdings'] = results['Shares'].iloc[i] * current_price
+            
+            # Calculate total value
+            results.loc[results.index[i], 'Total Value'] = results['Cash'].iloc[i] + results['Holdings'].iloc[i]
+            
+            # Calculate returns
+            results.loc[results.index[i], 'Returns'] = (
+                results['Total Value'].iloc[i] / results['Total Value'].iloc[i-1] - 1
+            )
         
-        # Calculate position sizes and returns
-        results['Position Size'] = 0.0
-        current_capital = self.initial_capital
-        
-        for i in range(len(results)):
-            if position_changes.iloc[i] != 0:
-                # Calculate new position size when position changes
-                price = data['Close'].iloc[i]
-                position_size = self.calculate_position_size(current_capital, price)
-                results.loc[results.index[i], 'Position Size'] = position_size * results['Signal'].iloc[i]
-            else:
-                # Maintain previous position size
-                results.loc[results.index[i], 'Position Size'] = results['Position Size'].iloc[i-1] if i > 0 else 0
-        
-        # Calculate returns including transaction costs
-        price_changes = data['Close'].pct_change()
-        results['Returns'] = (results['Position Size'].shift(1) / self.initial_capital) * price_changes - transaction_costs
-        
-        # Initialize the equity curve with initial capital
-        results['Equity Curve'] = self.initial_capital
-        
-        # Calculate equity curve
-        results['Equity Curve'] = self.initial_capital * (1 + results['Returns']).cumprod()
+        # Calculate equity curve from returns
+        results['Equity Curve'] = (1 + results['Returns']).cumprod() * self.initial_capital
         
         # Fill any NaN values in Equity Curve with initial_capital
         results['Equity Curve'] = results['Equity Curve'].fillna(self.initial_capital)

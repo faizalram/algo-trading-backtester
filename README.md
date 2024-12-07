@@ -29,11 +29,4 @@ A Python-based backtesting framework for testing various trading strategies on I
 - 🛠️ Additional Features:
   - Parameter optimization
   - Export results to Excel
-  - Strategy information and educational content
-
-## 🚀 Installation
-
-1. Clone the repository:
-
-```bash
-git clone https://github.com/faizalram/algo-trading-backt
+  - Strategy information

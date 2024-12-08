@@ -15,88 +15,79 @@ class Backtester:
         return int(max_shares * self.position_size)
     
     def run(self, data):
-        # Create a copy of the data to avoid modifying the original
-        results = pd.DataFrame(index=data.index)
+        """
+        Run the backtest simulation.
         
-        # Generate signals - ensure we get a Series
+        Args:
+            data (pd.DataFrame): Historical price data with OHLCV columns
+            
+        Returns:
+            pd.DataFrame: Results of the backtest including signals and portfolio value
+        """
+        # Generate trading signals
         signals = self.strategy.generate_signals(data)
-        if isinstance(signals, pd.DataFrame):
-            results['Signal'] = signals['Signal']
-        else:
-            results['Signal'] = signals
         
-        # Initialize columns
-        results['Position'] = 0  # Current position
-        results['Shares'] = 0    # Number of shares held
+        # Initialize results DataFrame
+        results = pd.DataFrame(index=data.index)
+        results['Signal'] = signals['Signal']
+        results['Price'] = data['Close']
+        
+        # Initialize portfolio metrics
+        results['Position'] = 0  # Current position (1: long, -1: short, 0: neutral)
+        results['Shares'] = 0  # Number of shares held
         results['Cash'] = self.initial_capital  # Available cash
-        results['Holdings'] = 0   # Value of holdings
+        results['Holdings'] = 0  # Value of holdings
         results['Total Value'] = self.initial_capital  # Total portfolio value
-        results['Returns'] = 0.0  # Period returns
         
-        for i in range(1, len(results)):
-            current_price = data['Close'].iloc[i]
-            prev_price = data['Close'].iloc[i-1]
-            current_signal = results['Signal'].iloc[i]
-            prev_signal = results['Signal'].iloc[i-1]
+        # Track portfolio changes
+        position = 0
+        
+        # Simulate trading
+        for i in range(len(results)):
+            # Update position based on signal
+            if i > 0:  # Copy previous day's position and values
+                results.iloc[i, results.columns.get_loc('Position')] = results.iloc[i-1, results.columns.get_loc('Position')]
+                results.iloc[i, results.columns.get_loc('Shares')] = results.iloc[i-1, results.columns.get_loc('Shares')]
+                results.iloc[i, results.columns.get_loc('Cash')] = results.iloc[i-1, results.columns.get_loc('Cash')]
             
-            # Copy previous values
-            results.loc[results.index[i], 'Cash'] = results['Cash'].iloc[i-1]
-            results.loc[results.index[i], 'Shares'] = results['Shares'].iloc[i-1]
-            results.loc[results.index[i], 'Position'] = results['Position'].iloc[i-1]
-            
-            # Check for position changes
-            if current_signal != prev_signal:
-                # Close existing position if any
-                if results['Shares'].iloc[i-1] != 0:
-                    # Calculate transaction costs for closing
-                    close_value = abs(results['Shares'].iloc[i-1] * current_price)
-                    transaction_cost = close_value * (self.commission + self.slippage)
-                    
-                    # Update cash
-                    if results['Position'].iloc[i-1] > 0:  # Long position
-                        results.loc[results.index[i], 'Cash'] += close_value - transaction_cost
-                    else:  # Short position
-                        results.loc[results.index[i], 'Cash'] -= close_value + transaction_cost
-                    
-                    # Reset shares
-                    results.loc[results.index[i], 'Shares'] = 0
-                    results.loc[results.index[i], 'Position'] = 0
+            # Check for trade signals
+            if results.iloc[i, results.columns.get_loc('Signal')] == 1 and position <= 0:  # Buy signal
+                # Calculate number of shares to buy
+                available_cash = results.iloc[i, results.columns.get_loc('Cash')]
+                price = results.iloc[i, results.columns.get_loc('Price')]
+                shares_to_buy = (available_cash * (1 - self.transaction_costs)) // price
                 
-                # Open new position if signal is not zero
-                if current_signal != 0:
-                    # Calculate position size
-                    available_capital = results['Cash'].iloc[i]
-                    shares = self.calculate_position_size(available_capital, current_price)
+                if shares_to_buy > 0:
+                    # Update position and holdings
+                    results.iloc[i, results.columns.get_loc('Position')] = 1
+                    results.iloc[i, results.columns.get_loc('Shares')] = shares_to_buy
+                    results.iloc[i, results.columns.get_loc('Cash')] -= shares_to_buy * price * (1 + self.transaction_costs)
+                    position = 1
                     
-                    # Calculate transaction costs for opening
-                    open_value = abs(shares * current_price)
-                    transaction_cost = open_value * (self.commission + self.slippage)
-                    
-                    if current_signal > 0:  # Long position
-                        if open_value + transaction_cost <= available_capital:
-                            results.loc[results.index[i], 'Cash'] -= (open_value + transaction_cost)
-                            results.loc[results.index[i], 'Shares'] = shares
-                            results.loc[results.index[i], 'Position'] = 1
-                    else:  # Short position
-                        results.loc[results.index[i], 'Cash'] += (open_value - transaction_cost)
-                        results.loc[results.index[i], 'Shares'] = -shares
-                        results.loc[results.index[i], 'Position'] = -1
+            elif results.iloc[i, results.columns.get_loc('Signal')] == -1 and position >= 0:  # Sell signal
+                shares_to_sell = results.iloc[i, results.columns.get_loc('Shares')]
+                if shares_to_sell > 0:
+                    # Update position and cash
+                    price = results.iloc[i, results.columns.get_loc('Price')]
+                    results.iloc[i, results.columns.get_loc('Position')] = -1
+                    results.iloc[i, results.columns.get_loc('Shares')] = 0
+                    results.iloc[i, results.columns.get_loc('Cash')] += shares_to_sell * price * (1 - self.transaction_costs)
+                    position = -1
             
-            # Calculate holdings value
-            results.loc[results.index[i], 'Holdings'] = results['Shares'].iloc[i] * current_price
-            
-            # Calculate total value
-            results.loc[results.index[i], 'Total Value'] = results['Cash'].iloc[i] + results['Holdings'].iloc[i]
-            
-            # Calculate returns
-            results.loc[results.index[i], 'Returns'] = (
-                results['Total Value'].iloc[i] / results['Total Value'].iloc[i-1] - 1
+            # Calculate holdings value and total portfolio value
+            results.iloc[i, results.columns.get_loc('Holdings')] = (
+                results.iloc[i, results.columns.get_loc('Shares')] * 
+                results.iloc[i, results.columns.get_loc('Price')]
+            )
+            results.iloc[i, results.columns.get_loc('Total Value')] = (
+                results.iloc[i, results.columns.get_loc('Holdings')] + 
+                results.iloc[i, results.columns.get_loc('Cash')]
             )
         
-        # Calculate equity curve from returns
-        results['Equity Curve'] = (1 + results['Returns']).cumprod() * self.initial_capital
+        # Calculate returns
+        results['Returns'] = results['Total Value'].pct_change()
         
-        # Fill any NaN values in Equity Curve with initial_capital
-        results['Equity Curve'] = results['Equity Curve'].fillna(self.initial_capital)
+        # Calculate equity curve
+        results['Equity Curve'] = (1 + results['Returns']).cumprod() * self.initial_capital
         
         return results

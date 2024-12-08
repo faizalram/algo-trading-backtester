@@ -99,18 +99,18 @@ class MovingAverageCrossover(Strategy):
             print("\nSignal distribution:")
             print(signals['Signal'].value_counts())
             
-            # Add more detailed debug info
+            # Add more detailed debug info with proper float conversion
             print("\nFirst few crossovers:")
             for idx in signal_points.head().index:
                 i = signals.index.get_loc(idx)
                 print(f"\nAt {idx}:")
-                print(f"Short MA: {short_ma.iloc[i-1]:.2f} -> {short_ma.iloc[i]:.2f}")
-                print(f"Long MA: {long_ma.iloc[i-1]:.2f} -> {long_ma.iloc[i]:.2f}")
-                print(f"Signal: {signals.iloc[i]['Signal']}")
+                print(f"Short MA: {float(short_ma.iloc[i-1]):.2f} -> {float(short_ma.iloc[i]):.2f}")
+                print(f"Long MA: {float(long_ma.iloc[i-1]):.2f} -> {float(long_ma.iloc[i]):.2f}")
+                print(f"Signal: {int(signals.iloc[i]['Signal'])}")
         else:
             print("\nNo signals generated!")
-            print("Short MA values:", short_ma.head())
-            print("Long MA values:", long_ma.head())
+            print("Short MA values:", short_ma.head().to_string())
+            print("Long MA values:", long_ma.head().to_string())
         
         return signals
 

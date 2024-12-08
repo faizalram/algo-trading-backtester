@@ -57,32 +57,24 @@ class MovingAverageCrossover(Strategy):
         
         # Initialize signals
         signals['Signal'] = 0
-        
-        # Track previous condition to detect crossovers
-        prev_condition = None
-        position = 0
-        
-        # Generate signals
-        for i in range(self.long_window, len(data)):
-            # Get current MA values
-            current_short = short_ma.iloc[i]
-            current_long = long_ma.iloc[i]
-            current_condition = current_short > current_long
-            
-            # Detect crossover
-            if prev_condition is not None and current_condition != prev_condition:
-                if current_condition and position <= 0:  # Bullish crossover
-                    signals.iloc[i] = 1
-                    position = 1
-                elif not current_condition and position >= 0:  # Bearish crossover
-                    signals.iloc[i] = -1
-                    position = -1
-            
-            prev_condition = current_condition
-        
-        # Store MAs for plotting
         signals['Short MA'] = short_ma
         signals['Long MA'] = long_ma
+        
+        # Generate crossover signals
+        for i in range(self.long_window + 1, len(data)):
+            # Get current and previous values
+            curr_short = short_ma.iloc[i]
+            curr_long = long_ma.iloc[i]
+            prev_short = short_ma.iloc[i-1]
+            prev_long = long_ma.iloc[i-1]
+            
+            # Check for crossovers
+            if prev_short <= prev_long and curr_short > curr_long:
+                # Bullish crossover
+                signals.iloc[i, signals.columns.get_loc('Signal')] = 1
+            elif prev_short >= prev_long and curr_short < curr_long:
+                # Bearish crossover
+                signals.iloc[i, signals.columns.get_loc('Signal')] = -1
         
         # Add debug information
         print("\nMoving Average Strategy Debug Information:")

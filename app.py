@@ -321,6 +321,16 @@ if error:
     st.error(error)
     st.stop()
 
+# After fetching data
+print("\nData Validation:")
+print(f"Data shape: {data.shape}")
+print(f"Data range: {data.index[0]} to {data.index[-1]}")
+print(f"Data columns: {data.columns.tolist()}")
+print("\nFirst few rows:")
+print(data.head())
+print("\nLast few rows:")
+print(data.tail())
+
 # Add optimization settings section
 st.sidebar.subheader("Optimization Settings")
 show_optimization = st.sidebar.checkbox("Show Optimization Options", False)

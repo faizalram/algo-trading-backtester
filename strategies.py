@@ -64,15 +64,18 @@ class MovingAverageCrossover(Strategy):
         
         # Generate signals
         for i in range(self.long_window, len(data)):
-            current_condition = short_ma.iloc[i] > long_ma.iloc[i]
+            # Get current MA values
+            current_short = short_ma.iloc[i]
+            current_long = long_ma.iloc[i]
+            current_condition = current_short > current_long
             
             # Detect crossover
             if prev_condition is not None and current_condition != prev_condition:
                 if current_condition and position <= 0:  # Bullish crossover
-                    signals.iloc[i, signals.columns.get_loc('Signal')] = 1
+                    signals.iloc[i] = 1
                     position = 1
                 elif not current_condition and position >= 0:  # Bearish crossover
-                    signals.iloc[i, signals.columns.get_loc('Signal')] = -1
+                    signals.iloc[i] = -1
                     position = -1
             
             prev_condition = current_condition

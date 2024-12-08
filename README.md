@@ -1,32 +1,29 @@
-# 📈 Algorithmic Trading Backtester
+# Algorithmic Trading Backtester
 
-A Python-based backtesting framework for testing various trading strategies on IHSG (Indonesian Stock Exchange) and other markets using Streamlit.
+A web-based backtesting platform for trading strategies built with Streamlit.
 
-## ✨ Features
+## Features
 
-- 🎯 Multiple Trading Strategies:
-  - 📊 Basic Strategies:
-    - Moving Average Crossover
-    - RSI (Relative Strength Index)
-    - Bollinger Bands
-  - 🚀 Advanced Strategies:
-    - Trend Following
-    - Mean Reversion
-    - Statistical Arbitrage
+- Multiple trading strategies:
+  - Moving Average Crossover
+  - RSI (Relative Strength Index)
+  - Bollinger Bands
+  - Trend Following
+  - Mean Reversion
+  - Statistical Arbitrage
+- Real-time data fetching using yfinance
+- Interactive visualizations with Plotly
+- Performance metrics calculation
+- Strategy optimization
+- Excel report export
 
-- 🖥️ Interactive Web Interface:
-  - Strategy parameter customization
-  - Real-time performance metrics
-  - Interactive charts and visualizations
-  - Strategy comparison tools
+## Installation
 
-- 📊 Performance Metrics:
-  - Total Return
-  - Sharpe Ratio
-  - Maximum Drawdown
-  - Win Rate
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/algo-trading-backtester.git
+cd algo-trading-backtester
 
-- 🛠️ Additional Features:
-  - Parameter optimization
-  - Export results to Excel
-  - Strategy information
+# Create virtual environment
+python -m venv venv
+source venv/bin

@@ -16,24 +16,31 @@ class Strategy:
         entry_price = None
         
         for i in range(len(signals)):
-            if signals.iloc[i] != 0 and position == 0:
-                position = signals.iloc[i]
-                entry_price = data['Close'].iloc[i]
+            signal_condition = signals.iloc[i] != 0
+            no_position = position == 0
+            
+            if signal_condition & no_position:
+                position = float(signals.iloc[i])
+                entry_price = float(data['Close'].iloc[i])
             elif position != 0:
-                current_price = data['Close'].iloc[i]
+                current_price = float(data['Close'].iloc[i])
                 pnl = (current_price - entry_price) / entry_price * 100
                 
-                # Check stop loss
-                if self.stop_loss and position * pnl < -abs(self.stop_loss):
-                    signals.iloc[i] = 0
-                    position = 0
-                    entry_price = None
+                # Check stop loss using bitwise operators
+                if self.stop_loss is not None:
+                    stop_loss_hit = (position * pnl) < -abs(self.stop_loss)
+                    if stop_loss_hit:
+                        signals.iloc[i] = 0
+                        position = 0
+                        entry_price = None
                 
-                # Check take profit
-                if self.take_profit and position * pnl > abs(self.take_profit):
-                    signals.iloc[i] = 0
-                    position = 0
-                    entry_price = None
+                # Check take profit using bitwise operators
+                if self.take_profit is not None:
+                    take_profit_hit = (position * pnl) > abs(self.take_profit)
+                    if take_profit_hit:
+                        signals.iloc[i] = 0
+                        position = 0
+                        entry_price = None
         
         return signals * self.position_size
 
@@ -44,11 +51,7 @@ class MovingAverageCrossover(Strategy):
         self.long_window = long_window
     
     def generate_signals(self, data):
-        """Generate trading signals based on moving average crossover.
-        
-        Returns:
-            pd.DataFrame: DataFrame with Signal column (1: buy, -1: sell, 0: hold)
-        """
+        """Generate trading signals based on moving average crossover."""
         signals = pd.DataFrame(index=data.index)
         
         # Calculate moving averages
@@ -62,25 +65,29 @@ class MovingAverageCrossover(Strategy):
         
         # Generate crossover signals
         for i in range(self.long_window + 1, len(data)):
-            # Get current and previous values
-            curr_short = short_ma.iloc[i]
-            curr_long = long_ma.iloc[i]
-            prev_short = short_ma.iloc[i-1]
-            prev_long = long_ma.iloc[i-1]
+            # Get current and previous values as floats
+            curr_short = float(short_ma.iloc[i])
+            curr_long = float(long_ma.iloc[i])
+            prev_short = float(short_ma.iloc[i-1])
+            prev_long = float(long_ma.iloc[i-1])
             
-            # Check for crossovers
-            if prev_short <= prev_long and curr_short > curr_long:
-                # Bullish crossover
+            # Create boolean conditions using bitwise operators
+            prev_condition = prev_short <= prev_long
+            curr_condition = curr_short > curr_long
+            
+            # Check for crossovers using bitwise operators
+            if (prev_condition) & (curr_condition):  # Bullish crossover
                 signals.iloc[i, signals.columns.get_loc('Signal')] = 1
-            elif prev_short >= prev_long and curr_short < curr_long:
-                # Bearish crossover
+            elif (~prev_condition) & (~curr_condition):  # Bearish crossover
                 signals.iloc[i, signals.columns.get_loc('Signal')] = -1
         
         # Add debug information
         print("\nMoving Average Strategy Debug Information:")
         print(f"Data points: {len(signals)}")
-        print(f"Buy signals: {len(signals[signals['Signal'] == 1])}")
-        print(f"Sell signals: {len(signals[signals['Signal'] == -1])}")
+        buy_signals = (signals['Signal'] == 1).sum()
+        sell_signals = (signals['Signal'] == -1).sum()
+        print(f"Buy signals: {buy_signals}")
+        print(f"Sell signals: {sell_signals}")
         print(f"First MA crossover at index: {self.long_window}")
         
         # Print first few signals with prices
@@ -91,6 +98,15 @@ class MovingAverageCrossover(Strategy):
             print(signal_points[['Signal', 'Price', 'Short MA', 'Long MA']].head())
             print("\nSignal distribution:")
             print(signals['Signal'].value_counts())
+            
+            # Add more detailed debug info
+            print("\nFirst few crossovers:")
+            for idx in signal_points.head().index:
+                i = signals.index.get_loc(idx)
+                print(f"\nAt {idx}:")
+                print(f"Short MA: {short_ma.iloc[i-1]:.2f} -> {short_ma.iloc[i]:.2f}")
+                print(f"Long MA: {long_ma.iloc[i-1]:.2f} -> {long_ma.iloc[i]:.2f}")
+                print(f"Signal: {signals.iloc[i]['Signal']}")
         else:
             print("\nNo signals generated!")
             print("Short MA values:", short_ma.head())
@@ -142,14 +158,15 @@ class RSIStrategy(Strategy):
         # Track position to avoid multiple signals
         position = 0
         
-        # Generate signals
+        # Generate signals using bitwise operators
         for i in range(len(signals)):
-            if position <= 0 and rsi.iloc[i] < self.oversold:
-                # Buy signal when RSI crosses below oversold
+            oversold_condition = float(rsi.iloc[i]) < self.oversold
+            overbought_condition = float(rsi.iloc[i]) > self.overbought
+            
+            if (position <= 0) & oversold_condition:
                 signals.iloc[i, signals.columns.get_loc('Signal')] = 1
                 position = 1
-            elif position >= 0 and rsi.iloc[i] > self.overbought:
-                # Sell signal when RSI crosses above overbought
+            elif (position >= 0) & overbought_condition:
                 signals.iloc[i, signals.columns.get_loc('Signal')] = -1
                 position = -1
             else:
@@ -158,17 +175,15 @@ class RSIStrategy(Strategy):
         # Store RSI for plotting
         signals['RSI'] = rsi
         
-        # Add debug information
+        # Add debug information using proper counting
+        buy_signals = (signals['Signal'] == 1).sum()
+        sell_signals = (signals['Signal'] == -1).sum()
         print("\nRSI Strategy Debug Information:")
         print(f"Data points: {len(signals)}")
-        print(f"Buy signals: {len(signals[signals['Signal'] == 1])}")
-        print(f"Sell signals: {len(signals[signals['Signal'] == -1])}")
-        print(f"RSI range: {rsi.min():.2f} to {rsi.max():.2f}")
-        print(f"Average RSI: {rsi.mean():.2f}")
-        
-        # Print first few signals
-        print("\nFirst few signals:")
-        print(signals[signals['Signal'] != 0].head())
+        print(f"Buy signals: {buy_signals}")
+        print(f"Sell signals: {sell_signals}")
+        print(f"RSI range: {float(rsi.min()):.2f} to {float(rsi.max()):.2f}")
+        print(f"Average RSI: {float(rsi.mean()):.2f}")
         
         return signals
 
@@ -187,17 +202,26 @@ class BollingerBandsStrategy(Strategy):
         signals['Upper'] = signals['MA'] + (signals['STD'] * self.num_std)
         signals['Lower'] = signals['MA'] - (signals['STD'] * self.num_std)
         
-        # Generate signals
-        signals['Signal'] = pd.Series(0.0, index=data.index)
-        mask_lower = data['Close'] < signals['Lower']
-        mask_upper = data['Close'] > signals['Upper']
-        signals.loc[mask_lower, 'Signal'] = 1.0
-        signals.loc[mask_upper, 'Signal'] = -1.0
+        # Generate signals using bitwise operators
+        lower_cross = (data['Close'] < signals['Lower'])
+        upper_cross = (data['Close'] > signals['Upper'])
+        
+        # Apply signals
+        signals.loc[lower_cross, 'Signal'] = 1.0
+        signals.loc[upper_cross, 'Signal'] = -1.0
         
         # Generate trading orders
         signals['Position'] = signals['Signal'].diff()
         
-        return signals 
+        # Add debug information
+        buy_signals = (signals['Signal'] == 1).sum()
+        sell_signals = (signals['Signal'] == -1).sum()
+        print("\nBollinger Bands Strategy Debug Information:")
+        print(f"Data points: {len(signals)}")
+        print(f"Buy signals: {buy_signals}")
+        print(f"Sell signals: {sell_signals}")
+        
+        return signals
 
 class MarketRegimeDetector:
     def __init__(self, window=20):
@@ -207,17 +231,19 @@ class MarketRegimeDetector:
         # Calculate volatility
         returns = data['Close'].pct_change()
         volatility = returns.rolling(window=self.window).std()
+        vol_mean = volatility.mean()
         
-        # Calculate trend
+        # Calculate trend using bitwise operators
         sma = data['Close'].rolling(window=self.window).mean()
         trend = data['Close'] > sma
+        low_vol = volatility < vol_mean
         
-        # Define regimes
+        # Define regimes using bitwise operators
         regimes = pd.Series(index=data.index, data='Unknown')
-        regimes[trend & (volatility < volatility.mean())] = 'Uptrend'
-        regimes[trend & (volatility >= volatility.mean())] = 'Volatile Uptrend'
-        regimes[~trend & (volatility < volatility.mean())] = 'Downtrend'
-        regimes[~trend & (volatility >= volatility.mean())] = 'Volatile Downtrend'
+        regimes[trend & low_vol] = 'Uptrend'
+        regimes[trend & ~low_vol] = 'Volatile Uptrend'
+        regimes[~trend & low_vol] = 'Downtrend'
+        regimes[~trend & ~low_vol] = 'Volatile Downtrend'
         
         return regimes 
 

@@ -19,130 +19,117 @@ class Backtester:
         return max(shares, 0)  # Ensure non-negative number of shares
     
     def run(self, data):
-        """
-        Run the backtest simulation.
-        
-        Args:
-            data (pd.DataFrame): Historical price data with OHLCV columns
+        """Run the backtest simulation."""
+        try:
+            # Generate trading signals
+            print("\nGenerating signals...")
+            signals = self.strategy.generate_signals(data)
             
-        Returns:
-            pd.DataFrame: Results of the backtest including signals and portfolio value
-        """
-        # Generate trading signals
-        signals = self.strategy.generate_signals(data)
-        
-        # Initialize results DataFrame
-        results = pd.DataFrame(index=data.index)
-        results['Signal'] = signals['Signal']
-        results['Price'] = data['Close']
-        
-        # Initialize portfolio metrics
-        results['Position'] = 0  # Current position (1: long, -1: short, 0: neutral)
-        results['Shares'] = 0  # Number of shares held
-        results['Cash'] = self.initial_capital  # Available cash
-        results['Holdings'] = 0  # Value of holdings
-        results['Total Value'] = self.initial_capital  # Total portfolio value
-        results['Trade'] = 0  # Track when trades occur
-        
-        # Track portfolio changes
-        position = 0
-        trades_made = 0
-        
-        # Add debug counters
-        buy_attempts = 0
-        sell_attempts = 0
-        successful_buys = 0
-        successful_sells = 0
-        
-        # Simulate trading
-        for i in range(len(results)):
-            # Update position based on signal
-            if i > 0:  # Copy previous day's position and values
-                results.iloc[i, results.columns.get_loc('Position')] = results.iloc[i-1, results.columns.get_loc('Position')]
-                results.iloc[i, results.columns.get_loc('Shares')] = results.iloc[i-1, results.columns.get_loc('Shares')]
-                results.iloc[i, results.columns.get_loc('Cash')] = results.iloc[i-1, results.columns.get_loc('Cash')]
+            # Convert signals to numeric values and handle NaN
+            signals['Signal'] = pd.to_numeric(signals['Signal'], errors='coerce').fillna(0)
             
-            current_cash = results.iloc[i, results.columns.get_loc('Cash')]
-            current_price = results.iloc[i, results.columns.get_loc('Price')]
-            current_total = current_cash  # Include current holdings in total capital
+            # Initialize results DataFrame
+            results = pd.DataFrame(index=data.index)
+            results['Signal'] = signals['Signal'].astype(float)  # Ensure float type
+            results['Price'] = data['Close'].astype(float)  # Ensure float type
             
-            if i > 0:
-                current_total += results.iloc[i-1, results.columns.get_loc('Holdings')]
+            # Initialize portfolio metrics with explicit types
+            results['Position'] = 0.0  # Use float instead of int
+            results['Shares'] = 0.0
+            results['Cash'] = float(self.initial_capital)
+            results['Holdings'] = 0.0
+            results['Total Value'] = float(self.initial_capital)
+            results['Trade'] = 0.0
             
-            # Check for trade signals
-            if results.iloc[i, results.columns.get_loc('Signal')] == 1 and position <= 0:  # Buy signal
-                buy_attempts += 1
-                # Calculate number of shares to buy using total capital for position sizing
-                shares_to_buy = self.calculate_position_size(current_total, current_price)
-                
-                if shares_to_buy > 0:
-                    # Calculate total cost including transaction costs
-                    total_cost = shares_to_buy * current_price * (1 + self.transaction_costs)
+            # Track portfolio changes
+            position = 0.0
+            trades_made = 0
+            
+            # Add debug counters
+            buy_attempts = 0
+            sell_attempts = 0
+            successful_buys = 0
+            successful_sells = 0
+            
+            # Simulate trading
+            for i in range(len(results)):
+                try:
+                    # Update position based on signal
+                    if i > 0:  # Copy previous day's position and values
+                        results.iloc[i, results.columns.get_loc('Position')] = float(results.iloc[i-1, results.columns.get_loc('Position')])
+                        results.iloc[i, results.columns.get_loc('Shares')] = float(results.iloc[i-1, results.columns.get_loc('Shares')])
+                        results.iloc[i, results.columns.get_loc('Cash')] = float(results.iloc[i-1, results.columns.get_loc('Cash')])
                     
-                    if total_cost <= current_cash:  # Check if we have enough cash
-                        # Update position and holdings
-                        results.iloc[i, results.columns.get_loc('Position')] = 1
-                        results.iloc[i, results.columns.get_loc('Shares')] = shares_to_buy
-                        results.iloc[i, results.columns.get_loc('Cash')] = current_cash - total_cost
-                        results.iloc[i, results.columns.get_loc('Trade')] = 1
-                        position = 1
-                        successful_buys += 1
-                        print(f"\nBuy executed at {data.index[i]}:")
-                        print(f"Price: ${current_price:.2f}")
-                        print(f"Shares: {shares_to_buy}")
-                        print(f"Total Cost: ${total_cost:.2f}")
+                    current_cash = float(results.iloc[i, results.columns.get_loc('Cash')])
+                    current_price = float(results.iloc[i, results.columns.get_loc('Price')])
+                    current_total = current_cash
+                    
+                    if i > 0:
+                        current_total += float(results.iloc[i-1, results.columns.get_loc('Holdings')])
+                    
+                    # Get current signal
+                    current_signal = float(results.iloc[i, results.columns.get_loc('Signal')])
+                    
+                    # Check for trade signals
+                    if current_signal == 1.0 and position <= 0:  # Buy signal
+                        buy_attempts += 1
+                        shares_to_buy = self.calculate_position_size(current_total, current_price)
                         
-            elif results.iloc[i, results.columns.get_loc('Signal')] == -1 and position >= 0:  # Sell signal
-                sell_attempts += 1
-                shares_to_sell = results.iloc[i, results.columns.get_loc('Shares')]
-                if shares_to_sell > 0:
-                    # Calculate total proceeds including transaction costs
-                    total_proceeds = shares_to_sell * current_price * (1 - self.transaction_costs)
+                        if shares_to_buy > 0:
+                            total_cost = shares_to_buy * current_price * (1 + self.transaction_costs)
+                            
+                            if total_cost <= current_cash:
+                                results.iloc[i, results.columns.get_loc('Position')] = 1.0
+                                results.iloc[i, results.columns.get_loc('Shares')] = float(shares_to_buy)
+                                results.iloc[i, results.columns.get_loc('Cash')] = current_cash - total_cost
+                                results.iloc[i, results.columns.get_loc('Trade')] = 1.0
+                                position = 1.0
+                                successful_buys += 1
+                                trades_made += 1
                     
-                    # Update position and cash
-                    results.iloc[i, results.columns.get_loc('Position')] = -1
-                    results.iloc[i, results.columns.get_loc('Shares')] = 0
-                    results.iloc[i, results.columns.get_loc('Cash')] = current_cash + total_proceeds
-                    results.iloc[i, results.columns.get_loc('Trade')] = -1
-                    position = -1
-                    successful_sells += 1
-                    print(f"\nSell executed at {data.index[i]}:")
-                    print(f"Price: ${current_price:.2f}")
-                    print(f"Shares: {shares_to_sell}")
-                    print(f"Total Proceeds: ${total_proceeds:.2f}")
+                    elif current_signal == -1.0 and position >= 0:  # Sell signal
+                        sell_attempts += 1
+                        shares_to_sell = float(results.iloc[i, results.columns.get_loc('Shares')])
+                        
+                        if shares_to_sell > 0:
+                            total_proceeds = shares_to_sell * current_price * (1 - self.transaction_costs)
+                            results.iloc[i, results.columns.get_loc('Position')] = -1.0
+                            results.iloc[i, results.columns.get_loc('Shares')] = 0.0
+                            results.iloc[i, results.columns.get_loc('Cash')] = current_cash + total_proceeds
+                            results.iloc[i, results.columns.get_loc('Trade')] = -1.0
+                            position = -1.0
+                            successful_sells += 1
+                            trades_made += 1
+                    
+                    # Calculate holdings value and total portfolio value
+                    current_shares = float(results.iloc[i, results.columns.get_loc('Shares')])
+                    holdings_value = current_shares * current_price
+                    results.iloc[i, results.columns.get_loc('Holdings')] = holdings_value
+                    total_value = holdings_value + float(results.iloc[i, results.columns.get_loc('Cash')])
+                    results.iloc[i, results.columns.get_loc('Total Value')] = total_value
+                    
+                except Exception as e:
+                    print(f"Error at index {i}: {str(e)}")
+                    raise
             
-            # Calculate holdings value and total portfolio value
-            current_shares = results.iloc[i, results.columns.get_loc('Shares')]
-            holdings_value = current_shares * current_price
-            results.iloc[i, results.columns.get_loc('Holdings')] = holdings_value
+            # Calculate returns
+            results['Returns'] = results['Total Value'].pct_change().fillna(0)
             
-            total_value = holdings_value + results.iloc[i, results.columns.get_loc('Cash')]
-            results.iloc[i, results.columns.get_loc('Total Value')] = total_value
-        
-        # Calculate returns
-        results['Returns'] = results['Total Value'].pct_change()
-        
-        # Calculate equity curve
-        results['Equity Curve'] = (1 + results['Returns']).cumprod() * self.initial_capital
-        
-        # Print summary statistics
-        print(f"Total trades made: {trades_made}")
-        print(f"Final portfolio value: ${results['Total Value'].iloc[-1]:,.2f}")
-        print(f"Total return: {((results['Total Value'].iloc[-1] / self.initial_capital) - 1) * 100:.2f}%")
-        
-        # Add debug information
-        if trades_made == 0:
-            print("\nDebug information:")
-            print(f"Number of buy signals: {len(results[results['Signal'] == 1])}")
-            print(f"Number of sell signals: {len(results[results['Signal'] == -1])}")
-            print("Check if strategy is generating signals correctly.")
-        
-        # Print trading statistics
-        print("\nTrading Statistics:")
-        print(f"Buy attempts: {buy_attempts}")
-        print(f"Successful buys: {successful_buys}")
-        print(f"Sell attempts: {sell_attempts}")
-        print(f"Successful sells: {successful_sells}")
-        print(f"Success rate: {((successful_buys + successful_sells) / (buy_attempts + sell_attempts) * 100):.2f}% if signals were generated")
-        
-        return results
+            # Calculate equity curve
+            results['Equity Curve'] = (1 + results['Returns']).cumprod() * self.initial_capital
+            
+            # Print trading statistics
+            print("\nTrading Statistics:")
+            print(f"Buy attempts: {buy_attempts}")
+            print(f"Successful buys: {successful_buys}")
+            print(f"Sell attempts: {sell_attempts}")
+            print(f"Successful sells: {successful_sells}")
+            print(f"Total trades made: {trades_made}")
+            print(f"Final portfolio value: ${results['Total Value'].iloc[-1]:,.2f}")
+            print(f"Total return: {((results['Total Value'].iloc[-1] / self.initial_capital) - 1) * 100:.2f}%")
+            
+            return results
+            
+        except Exception as e:
+            print(f"Error in backtester: {str(e)}")
+            raise

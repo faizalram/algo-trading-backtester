@@ -1,95 +1,56 @@
 import numpy as np
 
 def calculate_metrics(results):
-    metrics = {}
+    """Calculate trading strategy performance metrics."""
     
-    # Calculate total return from equity curve
-    if 'Equity Curve' in results.columns and len(results) > 0:
-        initial_value = float(results['Equity Curve'].iloc[0])
-        final_value = float(results['Equity Curve'].iloc[-1])
-        
-        if initial_value > 0:
-            total_return = ((final_value - initial_value) / initial_value) * 100
-            metrics['total_return'] = total_return
+    # Calculate returns if not already calculated
+    if 'Returns' not in results.columns:
+        results['Returns'] = results['Total Value'].pct_change()
+    
+    # Calculate total return
+    total_return = ((results['Total Value'].iloc[-1] / results['Total Value'].iloc[0]) - 1) * 100
+    
+    # Calculate Sharpe Ratio (assuming risk-free rate of 0.01)
+    try:
+        excess_returns = results['Returns'] - 0.01/252  # Daily risk-free rate
+        returns_std = excess_returns.std()
+        if returns_std != 0:
+            sharpe_ratio = np.sqrt(252) * excess_returns.mean() / returns_std
         else:
-            metrics['total_return'] = 0
-            
-    # Calculate Sharpe Ratio (assuming risk-free rate of 0.02)
-    if 'Returns' in results.columns:
-        returns = results['Returns'].dropna()
-        if len(returns) > 0:
-            excess_returns = returns - 0.02/252  # Daily risk-free rate
-            sharpe_ratio = np.sqrt(252) * returns.mean() / returns.std()
-            metrics['sharpe_ratio'] = sharpe_ratio
-        else:
-            metrics['sharpe_ratio'] = 0
-    else:
-        metrics['sharpe_ratio'] = 0
-        
+            sharpe_ratio = 0
+    except:
+        sharpe_ratio = 0
+    
     # Calculate Maximum Drawdown
-    if 'Equity Curve' in results.columns:
-        equity = results['Equity Curve']
-        rolling_max = equity.expanding().max()
-        drawdowns = (equity - rolling_max) / rolling_max * 100
-        metrics['max_drawdown'] = abs(drawdowns.min()) if len(drawdowns) > 0 else 0
-    else:
-        metrics['max_drawdown'] = 0
-        
+    try:
+        cumulative_returns = (1 + results['Returns']).cumprod()
+        rolling_max = cumulative_returns.expanding().max()
+        drawdowns = cumulative_returns / rolling_max - 1
+        max_drawdown = drawdowns.min() * 100  # Will be negative for losses
+    except:
+        max_drawdown = 0
+    
     # Calculate Win Rate
-    if 'Returns' in results.columns:
-        returns = results['Returns'].dropna()
-        if len(returns) > 0:
-            wins = len(returns[returns > 0])
-            total_trades = len(returns[returns != 0])
-            metrics['win_rate'] = (wins / total_trades * 100) if total_trades > 0 else 0
-        else:
-            metrics['win_rate'] = 0
-    else:
-        metrics['win_rate'] = 0
+    winning_days = len(results[results['Returns'] > 0])
+    total_days = len(results[results['Returns'] != 0])  # Only count days with trades
+    win_rate = (winning_days / total_days * 100) if total_days > 0 else 0
     
-    # Add Sortino Ratio
-    if 'Returns' in results.columns:
-        returns = results['Returns'].dropna()
-        if len(returns) > 0:
-            negative_returns = returns[returns < 0]
-            downside_std = negative_returns.std()
-            if downside_std != 0:
-                sortino_ratio = np.sqrt(252) * returns.mean() / downside_std
-                metrics['sortino_ratio'] = sortino_ratio
-            else:
-                metrics['sortino_ratio'] = np.nan
+    # Print detailed metrics for debugging
+    print("\nDetailed Metrics:")
+    print(f"Final Portfolio Value: ${results['Total Value'].iloc[-1]:,.2f}")
+    print(f"Initial Portfolio Value: ${results['Total Value'].iloc[0]:,.2f}")
+    print(f"Calculated Total Return: {total_return:.2f}%")
+    print(f"Average Daily Return: {results['Returns'].mean()*100:.4f}%")
+    print(f"Return Std Dev: {results['Returns'].std()*100:.4f}%")
+    print(f"Sharpe Ratio: {sharpe_ratio:.2f}")
+    print(f"Maximum Drawdown: {max_drawdown:.2f}%")
+    print(f"Winning Days: {winning_days}")
+    print(f"Total Trading Days: {total_days}")
+    print(f"Win Rate: {win_rate:.2f}%")
     
-    # Add Maximum Consecutive Losses
-    if 'Returns' in results.columns:
-        returns = results['Returns'].dropna()
-        losing_streak = 0
-        max_losing_streak = 0
-        for ret in returns:
-            if ret < 0:
-                losing_streak += 1
-                max_losing_streak = max(losing_streak, max_losing_streak)
-            else:
-                losing_streak = 0
-        metrics['max_consecutive_losses'] = max_losing_streak
-    
-    # Calmar Ratio (Return/Max Drawdown)
-    if metrics['max_drawdown'] != 0:
-        metrics['calmar_ratio'] = metrics['total_return'] / abs(metrics['max_drawdown'])
-    
-    # Value at Risk (VaR)
-    returns = results['Returns'].dropna()
-    metrics['var_95'] = np.percentile(returns, 5)
-    metrics['var_99'] = np.percentile(returns, 1)
-    
-    # Maximum Consecutive Wins
-    winning_streak = 0
-    max_winning_streak = 0
-    for ret in returns:
-        if ret > 0:
-            winning_streak += 1
-            max_winning_streak = max(winning_streak, max_winning_streak)
-        else:
-            winning_streak = 0
-    metrics['max_consecutive_wins'] = max_winning_streak
-    
-    return metrics 
+    return {
+        'total_return': total_return,
+        'sharpe_ratio': sharpe_ratio,
+        'max_drawdown': max_drawdown,
+        'win_rate': win_rate
+    } 

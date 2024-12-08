@@ -638,12 +638,89 @@ def create_strategy(strategy_type, params):
 current_params = get_current_params()
 results, metrics, signals = run_backtest(strategy_type, current_params, data)
 
+# After running the backtest
+print("\nBacktest Results Analysis:")
+print("Position changes:")
+print(results['Position'].value_counts())
+print("\nFirst few trades with position changes:")
+trades = results[results['Position'] != 0].head()
+print(trades[['Signal', 'Position', 'Price', 'Shares', 'Cash', 'Total Value', 'Returns']])
+
+# Add portfolio summary
+print("\nPortfolio Summary:")
+print(f"Initial Capital: ${results['Total Value'].iloc[0]:,.2f}")
+print(f"Final Capital: ${results['Total Value'].iloc[-1]:,.2f}")
+print(f"Total Return: {((results['Total Value'].iloc[-1] / results['Total Value'].iloc[0]) - 1) * 100:.2f}%")
+
+# Add trading activity summary
+print("\nTrading Activity:")
+print(f"Total Positions Taken: {len(results[results['Position'] != 0])}")
+print(f"Buy Signals: {len(results[results['Signal'] == 1])}")
+print(f"Sell Signals: {len(results[results['Signal'] == -1])}")
+
+# Show some price statistics
+print("\nPrice Statistics:")
+print(results['Price'].describe())
+
+# Show returns statistics
+print("\nReturns Statistics:")
+print(results['Returns'].describe())
+
 # Add checks for NaN values before displaying metrics
 col1, col2, col3, col4 = st.columns(4)
-col1.metric("Total Return", f"{metrics['total_return']:.2f}%" if pd.notnull(metrics['total_return']) else "N/A")
-col2.metric("Sharpe Ratio", f"{metrics['sharpe_ratio']:.2f}" if pd.notnull(metrics['sharpe_ratio']) else "N/A")
-col3.metric("Max Drawdown", f"{metrics['max_drawdown']:.2f}%" if pd.notnull(metrics['max_drawdown']) else "N/A")
-col4.metric("Win Rate", f"{metrics['win_rate']:.2f}%" if pd.notnull(metrics['win_rate']) else "N/A")
+
+# Get the metrics
+total_return = ((results['Total Value'].iloc[-1] / results['Total Value'].iloc[0]) - 1) * 100
+winning_days = len(results[results['Returns'] > 0])
+total_days = len(results[results['Returns'] != 0])
+win_rate = (winning_days / total_days * 100) if total_days > 0 else 0
+
+# Display metrics
+col1.metric("Total Return", f"{total_return:.2f}%")
+
+# For Sharpe Ratio, show with delta indicator
+sharpe_value = metrics['sharpe_ratio']
+col2.metric(
+    "Sharpe Ratio", 
+    f"{sharpe_value:.2f}" if pd.notnull(sharpe_value) else "N/A",
+    delta="Good" if sharpe_value > 1 else "Poor",
+    delta_color="normal" if sharpe_value > 1 else "inverse"
+)
+
+# For Max Drawdown, show as positive number with minus sign and delta
+drawdown_value = metrics['max_drawdown']
+drawdown_display = f"-{abs(drawdown_value):.2f}%" if pd.notnull(drawdown_value) else "N/A"
+col3.metric(
+    "Max Drawdown", 
+    drawdown_display,
+    delta="Low Risk" if abs(drawdown_value) < 10 else "High Risk",
+    delta_color="normal" if abs(drawdown_value) < 10 else "inverse"
+)
+
+# For Win Rate, show with delta indicator
+col4.metric(
+    "Win Rate", 
+    f"{win_rate:.2f}%" if total_days > 0 else "N/A",
+    delta="Good" if win_rate > 50 else "Poor",
+    delta_color="normal" if win_rate > 50 else "inverse"
+)
+
+# Add metrics explanation
+with st.expander("Metrics Explanation"):
+    st.write("""
+    - **Total Return**: Total percentage return of the strategy
+    - **Sharpe Ratio**: Risk-adjusted return
+        - > 1: Good - Strategy outperforms risk-free rate
+        - > 2: Very Good - Strong risk-adjusted returns
+        - > 3: Excellent - Exceptional risk-adjusted returns
+        - < 1: Poor - Strategy underperforms considering risk
+    - **Max Drawdown**: Largest peak-to-trough decline
+        - < -10%: Low Risk
+        - > -10%: High Risk
+    - **Win Rate**: Percentage of profitable trades
+        - > 50%: Good - More winning trades than losing trades
+        - < 50%: Poor - More losing trades than winning trades
+    """)
 
 # Cache plot creation
 @st.cache_data(ttl=3600)

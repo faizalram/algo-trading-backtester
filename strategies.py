@@ -39,54 +39,141 @@ class Strategy:
 
 class MovingAverageCrossover(Strategy):
     def __init__(self, short_window, long_window):
+        super().__init__()  # Call parent class constructor
         self.short_window = short_window
         self.long_window = long_window
     
     def generate_signals(self, data):
+        """Generate trading signals based on moving average crossover.
+        
+        Returns:
+            pd.DataFrame: DataFrame with Signal column (1: buy, -1: sell, 0: hold)
+        """
         signals = pd.DataFrame(index=data.index)
-        signals['Signal'] = 0.0
         
         # Calculate moving averages
-        signals['Short MA'] = data['Close'].rolling(window=self.short_window).mean()
-        signals['Long MA'] = data['Close'].rolling(window=self.long_window).mean()
+        short_ma = data['Close'].rolling(window=self.short_window).mean()
+        long_ma = data['Close'].rolling(window=self.long_window).mean()
+        
+        # Initialize signals
+        signals['Signal'] = 0
+        
+        # Track previous condition to detect crossovers
+        prev_condition = None
+        position = 0
         
         # Generate signals
-        signals['Signal'] = 0.0
-        mask = signals.index >= signals.index[self.long_window]
-        condition = signals['Short MA'] > signals['Long MA']
-        signals.loc[mask, 'Signal'] = np.where(condition[mask], 1.0, -1.0)
+        for i in range(self.long_window, len(data)):
+            current_condition = short_ma.iloc[i] > long_ma.iloc[i]
+            
+            # Detect crossover
+            if prev_condition is not None and current_condition != prev_condition:
+                if current_condition and position <= 0:  # Bullish crossover
+                    signals.iloc[i, signals.columns.get_loc('Signal')] = 1
+                    position = 1
+                elif not current_condition and position >= 0:  # Bearish crossover
+                    signals.iloc[i, signals.columns.get_loc('Signal')] = -1
+                    position = -1
+            
+            prev_condition = current_condition
         
-        # Generate trading orders
-        signals['Position'] = signals['Signal'].diff()
+        # Store MAs for plotting
+        signals['Short MA'] = short_ma
+        signals['Long MA'] = long_ma
+        
+        # Add debug information
+        print("\nMoving Average Strategy Debug Information:")
+        print(f"Data points: {len(signals)}")
+        print(f"Buy signals: {len(signals[signals['Signal'] == 1])}")
+        print(f"Sell signals: {len(signals[signals['Signal'] == -1])}")
+        print(f"First MA crossover at index: {self.long_window}")
+        
+        # Print first few signals with prices
+        signal_points = signals[signals['Signal'] != 0].copy()
+        if not signal_points.empty:
+            signal_points['Price'] = data['Close']
+            print("\nFirst few signals with prices:")
+            print(signal_points[['Signal', 'Price', 'Short MA', 'Long MA']].head())
+            print("\nSignal distribution:")
+            print(signals['Signal'].value_counts())
+        else:
+            print("\nNo signals generated!")
+            print("Short MA values:", short_ma.head())
+            print("Long MA values:", long_ma.head())
         
         return signals
 
 class RSIStrategy(Strategy):
-    def __init__(self, window, oversold, overbought):
+    def __init__(self, window=14, oversold=30, overbought=70):
+        super().__init__()  # Call parent class constructor
         self.window = window
         self.oversold = oversold
         self.overbought = overbought
     
+    def calculate_rsi(self, data):
+        """Calculate RSI without using talib"""
+        delta = data['Close'].diff()
+        
+        # Separate gains and losses
+        gain = delta.copy()
+        loss = delta.copy()
+        gain[gain < 0] = 0
+        loss[loss > 0] = 0
+        loss = abs(loss)
+        
+        # Calculate average gain and loss
+        avg_gain = gain.rolling(window=self.window, min_periods=1).mean()
+        avg_loss = loss.rolling(window=self.window, min_periods=1).mean()
+        
+        # Calculate RS and RSI
+        rs = avg_gain / avg_loss
+        rsi = 100 - (100 / (1 + rs))
+        
+        # Handle division by zero
+        rsi = rsi.replace([np.inf, -np.inf], np.nan)
+        rsi = rsi.fillna(50)  # Fill NaN values with neutral RSI
+        
+        return rsi
+    
     def generate_signals(self, data):
         signals = pd.DataFrame(index=data.index)
-        signals['Signal'] = 0.0
         
         # Calculate RSI
-        delta = data['Close'].diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=self.window).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=self.window).mean()
-        rs = gain / loss
-        signals['RSI'] = 100 - (100 / (1 + rs))
+        rsi = self.calculate_rsi(data)
+        
+        # Initialize signals
+        signals['Signal'] = 0
+        
+        # Track position to avoid multiple signals
+        position = 0
         
         # Generate signals
-        signals['Signal'] = pd.Series(0.0, index=data.index)
-        mask_oversold = signals['RSI'] < self.oversold
-        mask_overbought = signals['RSI'] > self.overbought
-        signals.loc[mask_oversold, 'Signal'] = 1.0
-        signals.loc[mask_overbought, 'Signal'] = -1.0
+        for i in range(len(signals)):
+            if position <= 0 and rsi.iloc[i] < self.oversold:
+                # Buy signal when RSI crosses below oversold
+                signals.iloc[i, signals.columns.get_loc('Signal')] = 1
+                position = 1
+            elif position >= 0 and rsi.iloc[i] > self.overbought:
+                # Sell signal when RSI crosses above overbought
+                signals.iloc[i, signals.columns.get_loc('Signal')] = -1
+                position = -1
+            else:
+                signals.iloc[i, signals.columns.get_loc('Signal')] = 0
         
-        # Generate trading orders
-        signals['Position'] = signals['Signal'].diff()
+        # Store RSI for plotting
+        signals['RSI'] = rsi
+        
+        # Add debug information
+        print("\nRSI Strategy Debug Information:")
+        print(f"Data points: {len(signals)}")
+        print(f"Buy signals: {len(signals[signals['Signal'] == 1])}")
+        print(f"Sell signals: {len(signals[signals['Signal'] == -1])}")
+        print(f"RSI range: {rsi.min():.2f} to {rsi.max():.2f}")
+        print(f"Average RSI: {rsi.mean():.2f}")
+        
+        # Print first few signals
+        print("\nFirst few signals:")
+        print(signals[signals['Signal'] != 0].head())
         
         return signals
 
